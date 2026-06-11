@@ -34,6 +34,7 @@ def init_db():
             value TEXT
         );
     """)
+    conn.execute("DELETE FROM ohlcv WHERE volume = 0")
     conn.commit()
     conn.close()
 

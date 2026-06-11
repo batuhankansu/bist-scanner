@@ -100,7 +100,7 @@ def update_data(symbols: list[str]) -> int:
                 l = float(row["Low"]) if pd.notna(row["Low"]) else None
                 c = float(row["Close"]) if pd.notna(row["Close"]) else None
                 v = int(row["Volume"]) if pd.notna(row["Volume"]) else 0
-                if o and h and l and c:
+                if o and h and l and c and v > 0:
                     rows.append((d, o, h, l, c, v))
             except (ValueError, TypeError):
                 continue
@@ -125,7 +125,8 @@ def fetch_single(symbol: str) -> pd.DataFrame | None:
                     l = float(row["Low"])
                     c = float(row["Close"])
                     v = int(row["Volume"])
-                    rows.append((d, o, h, l, c, v))
+                    if v > 0:
+                        rows.append((d, o, h, l, c, v))
                 except (ValueError, TypeError):
                     continue
             if rows:

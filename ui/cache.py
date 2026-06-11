@@ -3,7 +3,7 @@ import streamlit as st
 from datetime import date
 
 from database import get_conn, load_ohlcv
-from indicators import compute_indicators
+from indicators import compute_indicators, tradingview_dmi_adx
 from strategy import detect_signal, detect_all_signals
 from scanner import is_market_closed
 from config import (
@@ -83,10 +83,10 @@ def compute_stock_chart(
 
     df["rsi"] = ta.momentum.rsi(close, window=rsi_period)
 
-    adx_ind = ta.trend.ADXIndicator(high, low, close, window=dmi_period)
-    df["adx"] = adx_ind.adx()
-    df["plus_di"] = adx_ind.adx_pos()
-    df["minus_di"] = adx_ind.adx_neg()
+    plus_di, minus_di, adx = tradingview_dmi_adx(high, low, close, length=dmi_period)
+    df["adx"] = adx
+    df["plus_di"] = plus_di
+    df["minus_di"] = minus_di
 
     last = df.iloc[-1]
 
@@ -153,10 +153,51 @@ def compute_stock_chart(
 
     result = detect_signal(df, today=today_str if not is_market_closed() else None)
 
+    price_change = None
+    if all_signals and len(all_signals) >= 2:
+        pair = None
+
+        last_buy = None
+        for sig in all_signals:
+            if sig[1] == "BUY":
+                last_buy = sig
+        if last_buy:
+            for sig in all_signals:
+                if sig[0] > last_buy[0] and sig[1] == "SELL":
+                    pair = (last_buy, sig)
+                    break
+
+        last_sell = None
+        for sig in all_signals:
+            if sig[1] == "SELL":
+                last_sell = sig
+        if last_sell:
+            for sig in all_signals:
+                if sig[0] > last_sell[0] and sig[1] == "BUY":
+                    sell_buy = (last_sell, sig)
+                    if pair is None or sell_buy[1][0] > pair[1][0]:
+                        pair = sell_buy
+                    break
+
+        if pair:
+            from_date, from_type, from_price = pair[0]
+            to_date, to_type, to_price = pair[1]
+            pct = (to_price - from_price) / from_price * 100
+            price_change = {
+                "from_type": from_type,
+                "from_date": from_date,
+                "from_price": from_price,
+                "to_type": to_type,
+                "to_date": to_date,
+                "to_price": to_price,
+                "pct": pct,
+            }
+
     return {
         "figure": fig,
         "signal": result,
         "all_signals": all_signals,
+        "price_change": price_change,
         "last": {
             "date": last["date"],
             "close": last["close"],
