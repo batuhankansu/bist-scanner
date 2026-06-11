@@ -96,7 +96,7 @@ def run_scan():
         return
 
     print(f"Found {len(symbols)} symbols.")
-    update_data(symbols)
+    update_data(symbols, force_today=market_closed)
 
     print("Scanning for signals...")
     today_count = 0
@@ -119,8 +119,8 @@ def run_scan():
             result = detect_signal(df, today=today_str if not market_closed else None)
 
             if result:
-                signal_type, close_price = result
-                insert_signal(symbol, today_str, signal_type, close_price)
+                signal_type, bar_date, close_price = result
+                insert_signal(symbol, bar_date, signal_type, close_price)
                 today_count += 1
 
             scanned += 1

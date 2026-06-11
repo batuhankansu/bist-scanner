@@ -72,14 +72,14 @@ def fetch_yfinance(symbols: list[str], period: str = HISTORY_PERIOD) -> dict[str
     return results
 
 
-def update_data(symbols: list[str]) -> int:
+def update_data(symbols: list[str], force_today: bool = False) -> int:
     today_str = date.today().strftime("%Y-%m-%d")
     updated = 0
 
     need_download = []
     for symbol in symbols:
         last = get_last_date(symbol)
-        if last is None or last < today_str:
+        if last is None or (force_today and last == today_str) or (not force_today and last < today_str):
             need_download.append(symbol)
 
     if not need_download:

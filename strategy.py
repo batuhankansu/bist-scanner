@@ -3,7 +3,7 @@ import pandas as pd
 from config import NEAR_CROSS_PCT, RSI_BUY_LEVEL, RSI_SELL_LEVEL, ADX_MIN, MIN_BARS
 
 
-def detect_signal(df: pd.DataFrame, today: str | None = None) -> tuple[str, float] | None:
+def detect_signal(df: pd.DataFrame, today: str | None = None) -> tuple[str, str, float] | None:
     if len(df) < 3:
         return None
 
@@ -70,9 +70,9 @@ def detect_signal(df: pd.DataFrame, today: str | None = None) -> tuple[str, floa
     dmi_bear = minus_di > plus_di and adx >= ADX_MIN
 
     if ema_ok_buy and macd_bull and rsi_bull and dmi_bull:
-        return ("BUY", last["close"])
+        return ("BUY", str(last["date"]), last["close"])
     elif ema_ok_sell and macd_bear and rsi_bear and dmi_bear:
-        return ("SELL", last["close"])
+        return ("SELL", str(last["date"]), last["close"])
 
     return None
 
@@ -183,5 +183,5 @@ def detect_all_signals(df: pd.DataFrame, today: str | None = None) -> list[tuple
         sub = df.iloc[: i + 1]
         result = detect_signal(sub)
         if result:
-            signals.append((sub.iloc[-1]["date"], result[0], result[1]))
+            signals.append((sub.iloc[-1]["date"], result[0], result[2]))
     return signals

@@ -190,7 +190,7 @@ with tab_chart:
             else:
                 signal_info = result["signal"]
                 if signal_info:
-                    sig_type, sig_close = signal_info
+                    sig_type, _, sig_close = signal_info
                     if sig_type == "BUY":
                         st.success(f"**ALIS** sinyali — {selected} @ {sig_close:.2f}")
                     else:
