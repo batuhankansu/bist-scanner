@@ -1,0 +1,6 @@
+yfinance
+borsapy
+ta
+pandas
+streamlit
+plotly
