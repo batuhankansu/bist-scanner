@@ -3,12 +3,20 @@ import pandas as pd
 from config import NEAR_CROSS_PCT, RSI_BUY_LEVEL, RSI_SELL_LEVEL, ADX_MIN, MIN_BARS
 
 
-def detect_signal(df: pd.DataFrame) -> tuple[str, float] | None:
+def detect_signal(df: pd.DataFrame, today: str | None = None) -> tuple[str, float] | None:
     if len(df) < 3:
         return None
 
-    last = df.iloc[-1]
-    prev = df.iloc[-2]
+    if today and len(df) >= 2 and str(df.iloc[-1]["date"]) == today:
+        check_df = df.iloc[:-1]
+    else:
+        check_df = df
+
+    if len(check_df) < 3:
+        return None
+
+    last = check_df.iloc[-1]
+    prev = check_df.iloc[-2]
 
     ema_fast = last["ema_fast"]
     ema_slow = last["ema_slow"]
@@ -160,13 +168,18 @@ def detect_signal_debug(df: pd.DataFrame) -> dict | None:
     }
 
 
-def detect_all_signals(df: pd.DataFrame) -> list[tuple[str, str, float]]:
+def detect_all_signals(df: pd.DataFrame, today: str | None = None) -> list[tuple[str, str, float]]:
     """Detect signals on all historical bars.
     Returns list of (date, signal_type, close_price).
     Indicators must already be computed on df.
+    If today is provided, skips the last bar if it matches today's date.
     """
+    end = len(df)
+    if today and end >= 1 and str(df.iloc[-1]["date"]) == today:
+        end -= 1
+
     signals = []
-    for i in range(MIN_BARS, len(df)):
+    for i in range(MIN_BARS, end):
         sub = df.iloc[: i + 1]
         result = detect_signal(sub)
         if result:

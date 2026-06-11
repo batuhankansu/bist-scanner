@@ -1,9 +1,11 @@
 import pandas as pd
 import streamlit as st
+from datetime import date
 
 from database import get_conn, load_ohlcv
 from indicators import compute_indicators
 from strategy import detect_signal, detect_all_signals
+from scanner import is_market_closed
 from config import (
     EMA_FAST, EMA_SLOW, MACD_FAST, MACD_SLOW, MACD_SIGNAL,
     RSI_PERIOD, RSI_BUY_LEVEL, RSI_SELL_LEVEL,
@@ -21,7 +23,6 @@ def load_signals_df(all_signals: bool = False) -> pd.DataFrame:
             conn,
         )
     else:
-        from datetime import date
         today = date.today().strftime("%Y-%m-%d")
         df = pd.read_sql_query(
             "SELECT symbol, signal_type, close_price "
@@ -107,7 +108,8 @@ def compute_stock_chart(
                    line=dict(color="#ff9800", width=1.5)),
     )
 
-    all_signals = detect_all_signals(df)
+    today_str = date.today().strftime("%Y-%m-%d")
+    all_signals = detect_all_signals(df, today=today_str if not is_market_closed() else None)
     if all_signals:
         buy_dates = [s[0] for s in all_signals if s[1] == "BUY"]
         buy_prices = [s[2] for s in all_signals if s[1] == "BUY"]
@@ -149,7 +151,7 @@ def compute_stock_chart(
     fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="#eee")
     fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor="#eee")
 
-    result = detect_signal(df)
+    result = detect_signal(df, today=today_str if not is_market_closed() else None)
 
     return {
         "figure": fig,

@@ -21,11 +21,11 @@ def render_signal_table(df: pd.DataFrame, key: str = "signals"):
             return "background-color: #ffcdd2; color: #b71c1c"
         return ""
 
-    styled = display_df.style.applymap(color_signal, subset=["Signal"])
+    styled = display_df.style.map(color_signal, subset=["Signal"])
 
     st.dataframe(
         styled,
-        use_container_width=True,
+        width="stretch",
         height=min(len(display_df) * 35 + 40, 500),
         key=key,
     )

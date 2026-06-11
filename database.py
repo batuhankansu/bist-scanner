@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import date
+from datetime import date, datetime
 from config import DB_PATH
 
 
@@ -28,6 +28,10 @@ def init_db():
             signal_type TEXT NOT NULL,
             close_price REAL,
             PRIMARY KEY (symbol, signal_date, signal_type)
+        );
+        CREATE TABLE IF NOT EXISTS scan_metadata (
+            key   TEXT PRIMARY KEY,
+            value TEXT
         );
     """)
     conn.commit()
@@ -111,3 +115,22 @@ def get_previous_signals(today: str) -> list[tuple]:
     ).fetchall()
     conn.close()
     return rows
+
+
+def set_scan_time():
+    conn = get_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO scan_metadata (key, value) VALUES ('last_scan', ?)",
+        (datetime.now().isoformat(),),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_scan_time() -> str | None:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT value FROM scan_metadata WHERE key = 'last_scan'"
+    ).fetchone()
+    conn.close()
+    return row[0] if row else None

@@ -7,8 +7,8 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 
-from database import init_db
-from scanner import run_scan
+from database import init_db, get_scan_time
+from scanner import run_scan, run_backfill, is_market_closed
 from ui.cache import load_signals_df, get_cached_symbols_list, compute_stock_chart
 from ui.tables import render_signal_table
 from config import (
@@ -24,25 +24,56 @@ st.title("BIST-SCANNER")
 init_db()
 
 with st.sidebar:
-    st.header("Settings")
+    st.header("Ayarlar")
 
-    if st.button("Run Scan", type="primary", use_container_width=True):
-        with st.status("Scanning BIST symbols...", expanded=True) as status:
-            st.write("Running full scan. This may take a few minutes on first run...")
+    if st.button("Tarama Yap", type="primary", width="stretch"):
+        with st.status("BIST semollleri taraniyor...", expanded=True) as status:
+            st.write("Tam tarama yapiliyor. Ilk calistirmada birkaç dakika surebilir...")
             try:
                 run_scan()
-                status.update(label="Scan complete!", state="complete")
+                status.update(label="Tarama tamamlandi!", state="complete")
             except Exception as e:
-                status.update(label=f"Scan failed: {e}", state="error")
+                status.update(label=f"Tarama basarisiz: {e}", state="error")
+        st.cache_data.clear()
+        st.rerun()
+
+    if is_market_closed():
+        st.caption("Piyasa kapali — bugunun kapanmis mumlari dahil ediliyor")
+    else:
+        st.caption("Piyasa acik — bugunun mumu atlanıyor, sadece kapanmis mumlar taraniyor")
+
+    last_scan = get_scan_time()
+    if last_scan:
+        from datetime import datetime
+        scan_dt = datetime.fromisoformat(last_scan)
+        st.caption(f"Son tarama: {scan_dt.strftime('%d.%m.%Y %H:%M')}")
+    else:
+        st.caption("Son tarama: —")
+
+    if st.button("Gecmis Taramasi (Backfill)", width="stretch"):
+        with st.status("Gecmis sinyaller taraniyor...", expanded=True) as status:
+            def update_progress(current, total):
+                st.write(f"  {current}/{total} sembol isleniyor...")
+            try:
+                result = run_backfill(progress_callback=update_progress)
+                if result:
+                    status.update(
+                        label=f"Backfill tamamlandi! {result['total']} sinyal bulundu ({result['buy']} ALIS, {result['sell']} SATIS)",
+                        state="complete",
+                    )
+                else:
+                    status.update(label="Backfill tamamlandi ama sinyal bulunamadi.", state="complete")
+            except Exception as e:
+                status.update(label=f"Backfill basarisiz: {e}", state="error")
         st.cache_data.clear()
         st.rerun()
 
     st.divider()
-    st.subheader("Strategy Parameters")
+    st.subheader("Strateji Parametreleri")
 
-    ema_fast = st.slider("EMA Fast", 5, 20, EMA_FAST)
-    ema_slow = st.slider("EMA Slow", 15, 50, EMA_SLOW)
-    near_pct = st.slider("Near-Cross Tolerance (%)", 0.10, 1.0, NEAR_CROSS_PCT, step=0.05)
+    ema_fast = st.slider("EMA Hizli", 5, 20, EMA_FAST)
+    ema_slow = st.slider("EMA Yavas", 15, 50, EMA_SLOW)
+    near_pct = st.slider("Yakin Kesisim Toleransi (%)", 0.10, 1.0, NEAR_CROSS_PCT, step=0.05)
 
     st.caption("MACD")
     macd_fast = st.slider("MACD Fast", 5, 20, MACD_FAST)
@@ -58,7 +89,7 @@ with st.sidebar:
     dmi_period = st.slider("DMI Period", 2, 20, DMI_PERIOD)
     adx_min = st.slider("ADX Min", 10.0, 40.0, ADX_MIN, step=1.0)
 
-    if st.button("Reset Defaults", use_container_width=True):
+    if st.button("Varsayilanlara Don", width="stretch"):
         st.rerun()
 
 st.divider()
@@ -67,41 +98,52 @@ today_str = date.today().strftime("%Y-%m-%d")
 all_signals_df = load_signals_df(all_signals=True)
 today_signals_df = load_signals_df(all_signals=False)
 
-tab_today, tab_history, tab_chart = st.tabs(["Today's Signals", "Signal History", "Charts"])
+market_closed = is_market_closed()
+
+if market_closed:
+    tab_today, tab_history, tab_chart = st.tabs(["Bugunun Sinyalleri", "Sinyal Gecmisi", "Grafikler"])
+else:
+    tab_today, tab_history, tab_chart = st.tabs(["Son Kapanan Sinyaller", "Sinyal Gecmisi", "Grafikler"])
 
 with tab_today:
-    st.subheader(f"Today's Signals — {today_str}")
-    if today_signals_df.empty:
-        st.info("No signals generated today. Run a scan or check back later.")
+    if market_closed:
+        st.subheader(f"Bugunun Sinyalleri — {today_str}")
     else:
-        st.metric("Signals Today", len(today_signals_df))
+        st.subheader("Son Kapanan Sinyaller (Dun)")
+
+    if today_signals_df.empty:
+        st.info("Sinyal bulunamadi. Tarama yapin veya daha sonra kontrol edin.")
+    else:
+        if market_closed:
+            st.metric("Toplam Sinyal", len(today_signals_df))
+        else:
+            st.metric("Dunun Sinyalleri", len(today_signals_df))
         render_signal_table(today_signals_df, key="today")
 
 with tab_history:
-    st.subheader("Signal History")
+    st.subheader("Sinyal Gecmisi")
 
     if all_signals_df.empty:
-        st.info("No signal history yet. Run a scan first.")
+        st.info("Henuz sinyal gecmisi yok. Once bir tarama yapin.")
     else:
         col1, col2, col3 = st.columns([2, 2, 3])
         with col1:
             signal_filter = st.multiselect(
-                "Signal Type", ["BUY", "SELL"], default=["BUY", "SELL"], key="hist_type"
+                "Sinyal Tipi", ["BUY", "SELL"], default=["BUY", "SELL"], key="hist_type"
             )
         with col2:
-            if "signal_date" in all_signals_df.columns:
-                dates = pd.to_datetime(all_signals_df["signal_date"]).dt.date
-                min_date = dates.min()
-                max_date = dates.max()
-                date_range = st.date_input(
-                    "Date Range",
-                    value=(min_date, max_date),
-                    min_value=min_date,
-                    max_value=max_date,
-                    key="hist_date",
-                )
+            from datetime import datetime, timedelta
+            default_end = date.today()
+            default_start = default_end - timedelta(days=30)
+            date_range = st.date_input(
+                "Tarih Araligi",
+                value=(default_start, default_end),
+                min_value=date(2020, 1, 1),
+                max_value=default_end,
+                key="hist_date",
+            )
         with col3:
-            symbol_search = st.text_input("Search Symbol", key="hist_search")
+            symbol_search = st.text_input("Sembol Ara", key="hist_search")
 
         filtered = all_signals_df[
             all_signals_df["signal_type"].isin(signal_filter)
@@ -110,24 +152,30 @@ with tab_history:
             filtered = filtered[
                 filtered["symbol"].str.contains(symbol_search.upper(), case=False)
             ]
-        if "signal_date" in filtered.columns and len(date_range) == 2:
-            start, end = date_range
-            filtered = filtered[
-                (filtered["signal_date"] >= start.strftime("%Y-%m-%d"))
-                & (filtered["signal_date"] <= end.strftime("%Y-%m-%d"))
-            ]
 
-        st.metric("Total Signals", len(filtered))
+        if "signal_date" in filtered.columns:
+            if isinstance(date_range, tuple) and len(date_range) == 2:
+                start, end = date_range
+                filtered = filtered[
+                    (filtered["signal_date"] >= start.strftime("%Y-%m-%d"))
+                    & (filtered["signal_date"] <= end.strftime("%Y-%m-%d"))
+                ]
+            elif isinstance(date_range, date):
+                filtered = filtered[
+                    filtered["signal_date"] == date_range.strftime("%Y-%m-%d")
+                ]
+
+        st.metric("Toplam Sinyal", len(filtered))
         render_signal_table(filtered, key="history")
 
 with tab_chart:
-    st.subheader("Stock Chart")
+    st.subheader("Grafik")
 
     symbols = get_cached_symbols_list()
     if not symbols:
-        st.info("No data cached. Run a scan first.")
+        st.info("Veri bulunamadi. Once bir tarama yapin.")
     else:
-        selected = st.selectbox("Select Symbol", symbols, key="chart_symbol")
+        selected = st.selectbox("Sembol Sec", symbols, key="chart_symbol")
 
         if selected:
             result = compute_stock_chart(
@@ -138,21 +186,21 @@ with tab_chart:
             )
 
             if result is None:
-                st.warning(f"Not enough data for {selected}. Need at least 50 bars.")
+                st.warning(f"{selected} icin yeterli veri yok. En az 50 mum gerekli.")
             else:
                 signal_info = result["signal"]
                 if signal_info:
                     sig_type, sig_close = signal_info
                     if sig_type == "BUY":
-                        st.success(f"**BUY signal** for {selected} at {sig_close:.2f}")
+                        st.success(f"**ALIS** sinyali — {selected} @ {sig_close:.2f}")
                     else:
-                        st.error(f"**SELL signal** for {selected} at {sig_close:.2f}")
+                        st.error(f"**SATIS** sinyali — {selected} @ {sig_close:.2f}")
                 else:
-                    st.info(f"No signal for {selected} today.")
+                    st.info(f"{selected} icin su an sinyal yok.")
 
                 last = result["last"]
                 c1, c2, c3, c4, c5 = st.columns(5)
-                c1.metric("Close", f"{last['close']:.2f}")
+                c1.metric("Kapanis", f"{last['close']:.2f}")
                 c2.metric("RSI", f"{last['rsi']:.1f}")
                 c3.metric("ADX", f"{last['adx']:.1f}")
                 c4.metric("+DI / -DI", f"{last['plus_di']:.1f} / {last['minus_di']:.1f}")
@@ -162,6 +210,6 @@ with tab_chart:
                 if all_sigs:
                     buys = sum(1 for s in all_sigs if s[1] == "BUY")
                     sells = sum(1 for s in all_sigs if s[1] == "SELL")
-                    st.caption(f" historical signals: {len(all_sigs)} total ({buys} BUY, {sells} SELL)")
+                    st.caption(f"Gecmis sinyaller: {len(all_sigs)} toplam ({buys} ALIS, {sells} SATIS)")
 
-                st.plotly_chart(result["figure"], use_container_width=True)
+                st.plotly_chart(result["figure"], width="stretch")
