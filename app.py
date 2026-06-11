@@ -218,7 +218,14 @@ elif tab_labels[st.session_state.active_tab] == tab_labels[2]:
         with col_tv:
             if selected:
                 tv_url = f"https://www.tradingview.com/chart/?symbol=BIST:{selected}"
-                st.link_button("TradingView ile Aç", tv_url, use_container_width=True)
+                st.markdown(
+                    f'<a href="{tv_url}" target="_blank" '
+                    'style="display:inline-block;width:100%;padding:0.5rem 1rem;'
+                    'background-color:#000;color:#fff;text-align:center;'
+                    'border-radius:0.5rem;text-decoration:none;font-weight:600;'
+                    'border:1px solid #444;">TradingView ile Aç</a>',
+                    unsafe_allow_html=True,
+                )
 
         if selected:
             result = compute_stock_chart(
