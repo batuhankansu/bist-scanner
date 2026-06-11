@@ -199,12 +199,21 @@ with tab_chart:
                     st.info(f"{selected} icin su an sinyal yok.")
 
                 last = result["last"]
-                c1, c2, c3, c4, c5 = st.columns(5)
-                c1.metric("Kapanis", f"{last['close']:.2f}")
-                c2.metric("RSI", f"{last['rsi']:.1f}")
-                c3.metric("ADX", f"{last['adx']:.1f}")
-                c4.metric("+DI / -DI", f"{last['plus_di']:.1f} / {last['minus_di']:.1f}")
-                c5.metric("MACD Hist", f"{last['macd_hist']:.4f}")
+                dc = result["daily_change"]
+                if dc:
+                    c0, c1, c2, c3, c4 = st.columns(5)
+                    c0.metric(
+                        "Gunluk",
+                        f"{dc['curr_close']:.2f}",
+                        delta=f"{dc['pct']:+.2f}% ({dc['prev_close']:.2f} → {dc['curr_close']:.2f})",
+                    )
+                else:
+                    c0, c1, c2, c3, c4 = st.columns(5)
+                    c0.metric("Kapanis", f"{last['close']:.2f}")
+                c1.metric("RSI", f"{last['rsi']:.1f}")
+                c2.metric("ADX", f"{last['adx']:.1f}")
+                c3.metric("+DI / -DI", f"{last['plus_di']:.1f} / {last['minus_di']:.1f}")
+                c4.metric("MACD Hist", f"{last['macd_hist']:.4f}")
 
                 all_sigs = result["all_signals"]
                 if all_sigs:

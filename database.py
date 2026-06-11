@@ -1,6 +1,8 @@
 import sqlite3
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
 from config import DB_PATH
+
+BIST_TZ = timezone(timedelta(hours=3))
 
 
 def get_conn():
@@ -122,7 +124,7 @@ def set_scan_time():
     conn = get_conn()
     conn.execute(
         "INSERT OR REPLACE INTO scan_metadata (key, value) VALUES ('last_scan', ?)",
-        (datetime.now().isoformat(),),
+        (datetime.now(BIST_TZ).isoformat(),),
     )
     conn.commit()
     conn.close()

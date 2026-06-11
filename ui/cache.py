@@ -195,11 +195,24 @@ def compute_stock_chart(
                 "pct": pct,
             }
 
+    daily_change = None
+    if len(df) >= 2:
+        prev_close = df.iloc[-2]["close"]
+        curr_close = last["close"]
+        if prev_close and prev_close != 0:
+            daily_pct = (curr_close - prev_close) / prev_close * 100
+            daily_change = {
+                "prev_close": prev_close,
+                "curr_close": curr_close,
+                "pct": daily_pct,
+            }
+
     return {
         "figure": fig,
         "signal": result,
         "all_signals": all_signals,
         "price_change": price_change,
+        "daily_change": daily_change,
         "last": {
             "date": last["date"],
             "close": last["close"],
