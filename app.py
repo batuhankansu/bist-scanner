@@ -4,13 +4,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import streamlit as st
-import pandas as pd
 from datetime import date
 
 from database import init_db, get_scan_time
 from scanner import run_scan, run_backfill, is_market_closed
 from ui.cache import load_signals_df, get_cached_symbols_list, compute_stock_chart
-from ui.tables import render_signal_table
+from ui.tables import render_signal_table, render_signal_table_selectable
 from config import (
     EMA_FAST, EMA_SLOW, NEAR_CROSS_PCT,
     MACD_FAST, MACD_SLOW, MACD_SIGNAL,
@@ -22,6 +21,18 @@ st.set_page_config(page_title="BIST-SCANNER", layout="wide")
 st.title("BIST-SCANNER")
 
 init_db()
+
+market_closed = is_market_closed()
+
+if market_closed:
+    tab_labels = ["Bugunun Sinyalleri", "Sinyal Gecmisi", "Grafikler"]
+else:
+    tab_labels = ["Son Kapanan Sinyaller", "Sinyal Gecmisi", "Grafikler"]
+
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = 0
+if "chart_symbol" not in st.session_state:
+    st.session_state.chart_symbol = None
 
 with st.sidebar:
     st.header("Ayarlar")
@@ -37,7 +48,7 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-    if is_market_closed():
+    if market_closed:
         st.caption("Piyasa kapali — bugunun kapanmis mumlari dahil ediliyor")
     else:
         st.caption("Piyasa acik — bugunun mumu atlanıyor, sadece kapanmis mumlar taraniyor")
@@ -94,18 +105,29 @@ with st.sidebar:
 
 st.divider()
 
-today_str = date.today().strftime("%Y-%m-%d")
 all_signals_df = load_signals_df(all_signals=True)
 today_signals_df = load_signals_df(all_signals=False)
 
-market_closed = is_market_closed()
+if "pending_tab" in st.session_state:
+    st.session_state["seg_tab"] = tab_labels[st.session_state.pending_tab]
+    st.session_state.active_tab = st.session_state.pending_tab
+    del st.session_state.pending_tab
 
-if market_closed:
-    tab_today, tab_history, tab_chart = st.tabs(["Bugunun Sinyalleri", "Sinyal Gecmisi", "Grafikler"])
-else:
-    tab_today, tab_history, tab_chart = st.tabs(["Son Kapanan Sinyaller", "Sinyal Gecmisi", "Grafikler"])
+active_tab = st.segmented_control(
+    "Sekmeler",
+    tab_labels,
+    default=tab_labels[st.session_state.active_tab],
+    selection_mode="single",
+    label_visibility="collapsed",
+    key="seg_tab",
+)
 
-with tab_today:
+if active_tab and active_tab in tab_labels:
+    new_idx = tab_labels.index(active_tab)
+    if new_idx != st.session_state.active_tab:
+        st.session_state.active_tab = new_idx
+
+if tab_labels[st.session_state.active_tab] == tab_labels[0]:
     if market_closed:
         st.subheader(f"Bugunun Sinyalleri — {date.today().strftime('%d/%m/%Y')}")
     else:
@@ -118,9 +140,15 @@ with tab_today:
             st.metric("Toplam Sinyal", len(today_signals_df))
         else:
             st.metric("Dunun Sinyalleri", len(today_signals_df))
-        render_signal_table(today_signals_df, key="today")
 
-with tab_history:
+        selected_row = render_signal_table_selectable(today_signals_df, key="today")
+
+        if selected_row is not None:
+            st.session_state.chart_symbol = selected_row["symbol"]
+            st.session_state.pending_tab = 2
+            st.rerun()
+
+if tab_labels[st.session_state.active_tab] == tab_labels[1]:
     st.subheader("Sinyal Gecmisi")
 
     if all_signals_df.empty:
@@ -166,16 +194,31 @@ with tab_history:
                 ]
 
         st.metric("Toplam Sinyal", len(filtered))
-        render_signal_table(filtered, key="history")
+        selected_row = render_signal_table_selectable(filtered, key="history")
 
-with tab_chart:
+        if selected_row is not None:
+            st.session_state.chart_symbol = selected_row["symbol"]
+            st.session_state.pending_tab = 2
+            st.rerun()
+
+elif tab_labels[st.session_state.active_tab] == tab_labels[2]:
     st.subheader("Grafik")
 
     symbols = get_cached_symbols_list()
     if not symbols:
         st.info("Veri bulunamadi. Once bir tarama yapin.")
     else:
-        selected = st.selectbox("Sembol Sec", symbols, key="chart_symbol")
+        chart_sym = st.session_state.get("chart_symbol")
+        default_idx = 0
+        if chart_sym and chart_sym in symbols:
+            default_idx = symbols.index(chart_sym)
+        col_sel, col_tv = st.columns([4, 1])
+        with col_sel:
+            selected = st.selectbox("Sembol Sec", symbols, index=default_idx, key="chart_symbol")
+        with col_tv:
+            if selected:
+                tv_url = f"https://www.tradingview.com/chart/?symbol=BIST:{selected}"
+                st.link_button("TradingView ile Aç", tv_url, use_container_width=True)
 
         if selected:
             result = compute_stock_chart(
