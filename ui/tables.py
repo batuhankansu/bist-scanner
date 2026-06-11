@@ -9,6 +9,9 @@ def render_signal_table(df: pd.DataFrame, key: str = "signals"):
 
     if "signal_date" in df.columns:
         display_df = df[["symbol", "signal_type", "close_price", "signal_date"]].copy()
+        display_df["signal_date"] = display_df["signal_date"].apply(
+            lambda d: f"{d[8:10]}/{d[5:7]}/{d[:4]}" if isinstance(d, str) and len(d) >= 10 else d
+        )
         display_df.columns = ["Symbol", "Signal", "Close", "Date"]
     else:
         display_df = df[["symbol", "signal_type", "close_price"]].copy()

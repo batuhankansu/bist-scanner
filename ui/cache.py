@@ -68,6 +68,7 @@ def compute_stock_chart(
         return None
 
     df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
+    df["date"] = df["date"].apply(lambda d: f"{d[8:10]}/{d[5:7]}/{d[:4]}" if isinstance(d, str) and len(d) >= 10 else d)
 
     close = df["close"]
     high = df["high"]
@@ -109,7 +110,8 @@ def compute_stock_chart(
     )
 
     today_str = date.today().strftime("%Y-%m-%d")
-    all_signals = detect_all_signals(df, today=today_str if not is_market_closed() else None)
+    display_today = date.today().strftime("%d/%m/%Y")
+    all_signals = detect_all_signals(df, today=display_today if not is_market_closed() else None)
     if all_signals:
         buy_dates = [s[0] for s in all_signals if s[1] == "BUY"]
         buy_prices = [s[2] for s in all_signals if s[1] == "BUY"]
@@ -148,10 +150,10 @@ def compute_stock_chart(
         paper_bgcolor="white",
         plot_bgcolor="white",
     )
-    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="#eee")
+    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="#eee", tickformat="%d/%m/%Y")
     fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor="#eee")
 
-    result = detect_signal(df, today=today_str if not is_market_closed() else None)
+    result = detect_signal(df, today=display_today if not is_market_closed() else None)
 
     price_change = None
     if all_signals and len(all_signals) >= 2:

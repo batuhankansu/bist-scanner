@@ -46,7 +46,7 @@ with st.sidebar:
     if last_scan:
         from datetime import datetime
         scan_dt = datetime.fromisoformat(last_scan)
-        st.caption(f"Son tarama: {scan_dt.strftime('%d.%m.%Y %H:%M')}")
+        st.caption(f"Son tarama: {scan_dt.strftime('%d/%m/%Y %H:%M')}")
     else:
         st.caption("Son tarama: —")
 
@@ -107,7 +107,7 @@ else:
 
 with tab_today:
     if market_closed:
-        st.subheader(f"Bugunun Sinyalleri — {today_str}")
+        st.subheader(f"Bugunun Sinyalleri — {date.today().strftime('%d/%m/%Y')}")
     else:
         st.subheader("Son Kapanan Sinyaller (Dun)")
 
