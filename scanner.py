@@ -29,6 +29,9 @@ def has_signals() -> bool:
 def run_backfill(progress_callback=None):
     init_db()
 
+    today_str = date.today().strftime("%Y-%m-%d")
+    market_closed = is_market_closed()
+
     conn = get_conn()
     symbols = [r[0] for r in conn.execute(
         "SELECT DISTINCT symbol FROM ohlcv ORDER BY symbol"
@@ -54,7 +57,7 @@ def run_backfill(progress_callback=None):
 
         try:
             df = compute_indicators(df)
-            signals = detect_all_signals(df)
+            signals = detect_all_signals(df, today=today_str if not market_closed else None)
         except Exception:
             continue
 
