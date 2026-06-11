@@ -221,19 +221,4 @@ with tab_chart:
                     sells = sum(1 for s in all_sigs if s[1] == "SELL")
                     st.caption(f"Gecmis sinyaller: {len(all_sigs)} toplam ({buys} ALIS, {sells} SATIS)")
 
-                pc = result["price_change"]
-                if pc:
-                    arrow = "↑" if pc["pct"] >= 0 else "↓"
-                    color = "normal" if pc["pct"] >= 0 else "inverse"
-                    if pc["from_type"] == "BUY":
-                        label = f"ALIS ({pc['from_date']}) → SATIS ({pc['to_date']})"
-                    else:
-                        label = f"SATIS ({pc['from_date']}) → ALIS ({pc['to_date']})"
-                    st.metric(
-                        label=label,
-                        value=f"{pc['to_price']:.2f} TL",
-                        delta=f"{pc['pct']:+.1f}% ({pc['from_price']:.2f} → {pc['to_price']:.2f})",
-                        delta_color=color,
-                    )
-
                 st.plotly_chart(result["figure"], width="stretch")
