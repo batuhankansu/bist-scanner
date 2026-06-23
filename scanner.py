@@ -2,7 +2,7 @@ import pandas as pd
 from datetime import datetime
 
 from config import MIN_BARS, BIST_TZ, today_str
-from database import init_db, get_conn, load_ohlcv, insert_signal, get_today_signals, get_previous_signals, set_scan_time
+from database import init_db, get_conn, load_ohlcv, insert_signal, get_today_signals, get_previous_signals, set_scan_time, get_latest_signal_date
 from data_fetcher import get_stock_list, update_data
 from indicators import compute_indicators
 from strategy import detect_signal, detect_all_signals
@@ -81,6 +81,7 @@ def run_backfill(progress_callback=None):
 def run_scan():
     today = today_str()
     market_closed = is_market_closed()
+    print(f"[SCAN] today_str={today}, market_closed={market_closed}")
 
     print("Initializing database...")
     init_db()
@@ -96,7 +97,11 @@ def run_scan():
         return
 
     print(f"Found {len(symbols)} symbols.")
-    update_data(symbols, force_today=market_closed)
+    updated = update_data(symbols, force_today=market_closed)
+    print(f"[SCAN] update_data returned {updated} updated symbols")
+
+    db_latest = get_latest_signal_date()
+    print(f"[SCAN] get_latest_signal_date() = {db_latest}")
 
     print("Scanning for signals...")
     today_count = 0
@@ -128,11 +133,17 @@ def run_scan():
             errors += 1
             continue
 
-    today_signals = get_today_signals(today)
-    previous_signals = get_previous_signals(today)
+        if i == 0:
+            print(f"[SCAN] Sample: {symbol} last_bar_date={df.iloc[-1]['date']}, detect_result={result}")
+
+    latest_date = db_latest or today
+    print(f"[SCAN] Querying signals for date={latest_date}")
+    today_signals = get_today_signals(latest_date)
+    previous_signals = get_previous_signals(latest_date)
+    print(f"[SCAN] Found {len(today_signals)} today signals, {len(previous_signals)} previous signals")
 
     set_scan_time()
 
-    print_today_signals(today_signals, today)
+    print_today_signals(today_signals, latest_date)
     print_previous_signals(previous_signals)
     print_summary(scanned, today_count, len(today_signals) + len(previous_signals))

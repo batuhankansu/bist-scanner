@@ -81,6 +81,13 @@ def insert_signal(symbol: str, signal_date: str, signal_type: str, close_price: 
     conn.close()
 
 
+def get_latest_signal_date() -> str | None:
+    conn = get_conn()
+    row = conn.execute("SELECT MAX(signal_date) FROM signals").fetchone()
+    conn.close()
+    return row[0] if row and row[0] else None
+
+
 def get_latest_signal(symbol: str) -> tuple | None:
     conn = get_conn()
     row = conn.execute(

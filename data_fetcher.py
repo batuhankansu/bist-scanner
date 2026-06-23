@@ -78,8 +78,10 @@ def update_data(symbols: list[str], force_today: bool = False) -> int:
     need_download = []
     for symbol in symbols:
         last = get_last_date(symbol)
-        if last is None or (force_today and last == today) or (not force_today and last < today):
+        if last is None or last < today or (force_today and last == today):
             need_download.append(symbol)
+
+    print(f"  [DATA] {len(need_download)}/{len(symbols)} symbols need download (today={today}, force_today={force_today})")
 
     if not need_download:
         return 0
@@ -87,12 +89,16 @@ def update_data(symbols: list[str], force_today: bool = False) -> int:
     print(f"  Downloading data for {len(need_download)} symbols...")
     data = fetch_yfinance(need_download)
 
+    skipped_nan = 0
+    saved = 0
     for symbol, df in data.items():
         if df.empty:
             continue
         rows = []
+        last_date = None
         for idx, row in df.iterrows():
             d = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)[:10]
+            last_date = d
             try:
                 o = float(row["Open"]) if pd.notna(row["Open"]) else None
                 h = float(row["High"]) if pd.notna(row["High"]) else None
@@ -101,11 +107,20 @@ def update_data(symbols: list[str], force_today: bool = False) -> int:
                 v = int(row["Volume"]) if pd.notna(row["Volume"]) else 0
                 if o and h and l and c and v > 0:
                     rows.append((d, o, h, l, c, v))
+                else:
+                    skipped_nan += 1
             except (ValueError, TypeError):
                 continue
         if rows:
             insert_ohlcv(symbol, rows)
-            updated += 1
+            saved += 1
+
+    print(f"  [DATA] yfinance returned {len(data)} symbols, saved={saved}, skipped_nan_rows={skipped_nan}")
+
+    if data:
+        sample_sym = list(data.keys())[0]
+        sample_df = data[sample_sym]
+        print(f"  [DATA] Sample ({sample_sym}): last_bar={sample_df.index[-1]}, Open={sample_df.iloc[-1].get('Open', 'N/A')}")
 
     return updated
 

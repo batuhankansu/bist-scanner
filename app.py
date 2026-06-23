@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import streamlit as st
 from datetime import date
 
-from database import init_db, get_scan_time
+from database import init_db, get_scan_time, get_latest_signal_date
 from scanner import run_scan, run_backfill, is_market_closed
 from ui.cache import load_signals_df, get_cached_symbols_list, compute_stock_chart
 from ui.tables import render_signal_table, render_signal_table_selectable
@@ -128,8 +128,9 @@ if active_tab and active_tab in tab_labels:
         st.session_state.active_tab = new_idx
 
 if tab_labels[st.session_state.active_tab] == tab_labels[0]:
+    latest_date = get_latest_signal_date() or today_str()
     if market_closed:
-        st.subheader(f"Bugunun Sinyalleri — {today_str()}")
+        st.subheader(f"Bugunun Sinyalleri — {latest_date}")
     else:
         st.subheader("Son Kapanan Sinyaller (Dun)")
 

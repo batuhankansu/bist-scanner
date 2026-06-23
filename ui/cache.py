@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from database import get_conn, load_ohlcv
+from database import get_conn, load_ohlcv, get_latest_signal_date
 from indicators import compute_indicators, tradingview_dmi_adx
 from strategy import detect_signal, detect_all_signals
 from scanner import is_market_closed
@@ -22,7 +22,7 @@ def load_signals_df(all_signals: bool = False) -> pd.DataFrame:
             conn,
         )
     else:
-        today = today_str()
+        today = get_latest_signal_date() or today_str()
         df = pd.read_sql_query(
             "SELECT symbol, signal_type, close_price "
             "FROM signals WHERE signal_date = ? ORDER BY signal_type, symbol",
