@@ -164,7 +164,7 @@ if tab_labels[st.session_state.active_tab] == tab_labels[1]:
             from datetime import datetime, timedelta
             from config import BIST_TZ
             default_end = datetime.now(BIST_TZ).date()
-            default_start = default_end - timedelta(days=30)
+            default_start = default_end - timedelta(days=3)
             date_range = st.date_input(
                 "Tarih Araligi",
                 value=(default_start, default_end),
