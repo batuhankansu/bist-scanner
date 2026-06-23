@@ -8,6 +8,7 @@ from indicators import compute_indicators
 from strategy import detect_signal, detect_all_signals
 from display import print_today_signals, print_previous_signals, print_summary
 
+MARKET_OPEN_HOUR = 10
 MARKET_CLOSE_HOUR = 18
 
 
@@ -15,7 +16,7 @@ def is_market_closed() -> bool:
     now = datetime.now(BIST_TZ)
     if now.weekday() >= 5:
         return True
-    return now.hour >= MARKET_CLOSE_HOUR
+    return now.hour < MARKET_OPEN_HOUR or now.hour >= MARKET_CLOSE_HOUR
 
 
 def has_signals() -> bool:
