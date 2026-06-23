@@ -14,7 +14,7 @@ from config import (
     EMA_FAST, EMA_SLOW, NEAR_CROSS_PCT,
     MACD_FAST, MACD_SLOW, MACD_SIGNAL,
     RSI_PERIOD, RSI_BUY_LEVEL, RSI_SELL_LEVEL,
-    DMI_PERIOD, ADX_MIN,
+    DMI_PERIOD, ADX_MIN, today_str,
 )
 
 st.set_page_config(page_title="BIST-SCANNER", layout="wide")
@@ -129,7 +129,7 @@ if active_tab and active_tab in tab_labels:
 
 if tab_labels[st.session_state.active_tab] == tab_labels[0]:
     if market_closed:
-        st.subheader(f"Bugunun Sinyalleri — {date.today().strftime('%d/%m/%Y')}")
+        st.subheader(f"Bugunun Sinyalleri — {today_str()}")
     else:
         st.subheader("Son Kapanan Sinyaller (Dun)")
 
@@ -161,7 +161,8 @@ if tab_labels[st.session_state.active_tab] == tab_labels[1]:
             )
         with col2:
             from datetime import datetime, timedelta
-            default_end = date.today()
+            from config import BIST_TZ
+            default_end = datetime.now(BIST_TZ).date()
             default_start = default_end - timedelta(days=30)
             date_range = st.date_input(
                 "Tarih Araligi",

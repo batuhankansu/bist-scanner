@@ -1,14 +1,13 @@
 import pandas as pd
-from datetime import date, datetime, timezone, timedelta
+from datetime import datetime
 
-from config import MIN_BARS
+from config import MIN_BARS, BIST_TZ, today_str
 from database import init_db, get_conn, load_ohlcv, insert_signal, get_today_signals, get_previous_signals, set_scan_time
 from data_fetcher import get_stock_list, update_data
 from indicators import compute_indicators
 from strategy import detect_signal, detect_all_signals
 from display import print_today_signals, print_previous_signals, print_summary
 
-BIST_TZ = timezone(timedelta(hours=3))
 MARKET_CLOSE_HOUR = 18
 
 
@@ -29,7 +28,7 @@ def has_signals() -> bool:
 def run_backfill(progress_callback=None):
     init_db()
 
-    today_str = date.today().strftime("%Y-%m-%d")
+    today = today_str()
     market_closed = is_market_closed()
 
     conn = get_conn()
@@ -57,7 +56,7 @@ def run_backfill(progress_callback=None):
 
         try:
             df = compute_indicators(df)
-            signals = detect_all_signals(df, today=today_str if not market_closed else None)
+            signals = detect_all_signals(df, today=today if not market_closed else None)
         except Exception:
             continue
 
@@ -79,7 +78,7 @@ def run_backfill(progress_callback=None):
 
 
 def run_scan():
-    today_str = date.today().strftime("%Y-%m-%d")
+    today = today_str()
     market_closed = is_market_closed()
 
     print("Initializing database...")
@@ -116,7 +115,7 @@ def run_scan():
 
         try:
             df = compute_indicators(df)
-            result = detect_signal(df, today=today_str if not market_closed else None)
+            result = detect_signal(df, today=today if not market_closed else None)
 
             if result:
                 signal_type, bar_date, close_price = result
@@ -128,11 +127,11 @@ def run_scan():
             errors += 1
             continue
 
-    today_signals = get_today_signals(today_str)
-    previous_signals = get_previous_signals(today_str)
+    today_signals = get_today_signals(today)
+    previous_signals = get_previous_signals(today)
 
     set_scan_time()
 
-    print_today_signals(today_signals, today_str)
+    print_today_signals(today_signals, today)
     print_previous_signals(previous_signals)
     print_summary(scanned, today_count, len(today_signals) + len(previous_signals))

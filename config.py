@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
 
 if getattr(sys, 'frozen', False):
     BASE_DIR = Path(sys.executable).parent
@@ -31,3 +32,10 @@ ADX_MIN = 20.0
 HISTORY_PERIOD = "6mo"
 MIN_BARS = 50
 YFINANCE_BATCH_SIZE = 50
+
+# Timezone
+BIST_TZ = timezone(timedelta(hours=3))
+
+
+def today_str() -> str:
+    return datetime.now(BIST_TZ).strftime("%Y-%m-%d")

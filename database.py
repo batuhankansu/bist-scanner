@@ -1,8 +1,6 @@
 import sqlite3
-from datetime import date, datetime, timezone, timedelta
-from config import DB_PATH
-
-BIST_TZ = timezone(timedelta(hours=3))
+from datetime import datetime
+from config import DB_PATH, BIST_TZ
 
 
 def get_conn():

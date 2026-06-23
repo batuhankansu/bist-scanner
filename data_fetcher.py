@@ -1,9 +1,8 @@
 import time
 import yfinance as yf
 import pandas as pd
-from datetime import date, timedelta
 
-from config import HISTORY_PERIOD, YFINANCE_BATCH_SIZE, MIN_BARS
+from config import HISTORY_PERIOD, YFINANCE_BATCH_SIZE, MIN_BARS, today_str
 from database import get_last_date, insert_ohlcv
 
 
@@ -73,13 +72,13 @@ def fetch_yfinance(symbols: list[str], period: str = HISTORY_PERIOD) -> dict[str
 
 
 def update_data(symbols: list[str], force_today: bool = False) -> int:
-    today_str = date.today().strftime("%Y-%m-%d")
+    today = today_str()
     updated = 0
 
     need_download = []
     for symbol in symbols:
         last = get_last_date(symbol)
-        if last is None or (force_today and last == today_str) or (not force_today and last < today_str):
+        if last is None or (force_today and last == today) or (not force_today and last < today):
             need_download.append(symbol)
 
     if not need_download:

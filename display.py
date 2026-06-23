@@ -1,6 +1,3 @@
-from datetime import date
-
-
 def print_header(title: str):
     width = 60
     print()
