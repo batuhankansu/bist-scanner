@@ -2,8 +2,9 @@ import pandas as pd
 import streamlit as st
 
 from database import get_conn, load_ohlcv, get_latest_signal_date
-from indicators import compute_indicators, tradingview_dmi_adx
+from indicators import compute_indicators, compute_accumulation_indicators, tradingview_dmi_adx
 from strategy import detect_signal, detect_all_signals
+from mfi_strategy import detect_accumulation_signal
 from scanner import is_market_closed
 from config import (
     EMA_FAST, EMA_SLOW, MACD_FAST, MACD_SLOW, MACD_SIGNAL,
@@ -223,3 +224,19 @@ def compute_stock_chart(
             "macd_hist": last["macd_hist"],
         },
     }
+
+
+def compute_accumulation_for_symbol(symbol: str):
+    rows = load_ohlcv(symbol, limit=100)
+    if len(rows) < 50:
+        return None
+
+    df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
+
+    try:
+        df = compute_accumulation_indicators(df)
+        result = detect_accumulation_signal(df)
+    except Exception:
+        return None
+
+    return result

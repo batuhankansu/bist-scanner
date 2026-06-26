@@ -4,11 +4,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import streamlit as st
+import pandas as pd
 from datetime import date
 
 from database import init_db, get_scan_time, get_latest_signal_date
 from scanner import run_scan, run_backfill, is_market_closed
-from ui.cache import load_signals_df, get_cached_symbols_list, compute_stock_chart
+from ui.cache import load_signals_df, get_cached_symbols_list, compute_stock_chart, compute_accumulation_for_symbol
 from ui.tables import render_signal_table, render_signal_table_selectable
 from config import (
     EMA_FAST, EMA_SLOW, NEAR_CROSS_PCT,
@@ -25,9 +26,9 @@ init_db()
 market_closed = is_market_closed()
 
 if market_closed:
-    tab_labels = ["Bugunun Sinyalleri", "Sinyal Gecmisi", "Grafikler"]
+    tab_labels = ["Bugunun Sinyalleri", "Sinyal Gecmisi", "Grafikler", "Birikim Taramasi"]
 else:
-    tab_labels = ["Son Kapanan Sinyaller", "Sinyal Gecmisi", "Grafikler"]
+    tab_labels = ["Son Kapanan Sinyaller", "Sinyal Gecmisi", "Grafikler", "Birikim Taramasi"]
 
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = 0
@@ -274,3 +275,79 @@ elif tab_labels[st.session_state.active_tab] == tab_labels[2]:
                     st.caption(f"Gecmis sinyaller: {len(all_sigs)} toplam ({buys} ALIS, {sells} SATIS)")
 
                 st.plotly_chart(result["figure"], width="stretch")
+
+elif tab_labels[st.session_state.active_tab] == tab_labels[3]:
+    st.subheader("Birikim Taramasi")
+    st.caption("MFI, CMF, ADX, RSI, EMA20 ve Hacim kosullarini es zamanli kontrol eder")
+
+    symbols = get_cached_symbols_list()
+    if not symbols:
+        st.info("Veri bulunamadi. Once bir tarama yapin.")
+    else:
+        with st.form("accum_scan_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                min_score = st.slider("Minimum Kosul Sayisi", 1, 7, 7, help="Kac kosulun ayni anda saglanacagi")
+            with col2:
+                symbol_filter = st.text_input("Sembol Filtrele (opsiyonel)", key="acc_filter")
+            submitted = st.form_submit_button("Tarama Yap", type="primary", width="stretch")
+
+        if submitted or "accum_results" in st.session_state:
+            if submitted:
+                results = []
+                progress_bar = st.progress(0, text="Taranıyor...")
+                filtered_syms = [s for s in symbols if symbol_filter.upper() in s] if symbol_filter else symbols
+                total = len(filtered_syms)
+                for i, sym in enumerate(filtered_syms):
+                    if (i + 1) % 50 == 0 or i == 0 or i == total - 1:
+                        progress_bar.progress((i + 1) / total, text=f"{i+1}/{total} {sym}")
+                    acc = compute_accumulation_for_symbol(sym)
+                    if acc:
+                        met_count = sum(1 for v in acc["conditions"].values() if v)
+                        if met_count >= min_score:
+                            results.append({"symbol": sym, **acc})
+                progress_bar.empty()
+                st.session_state["accum_results"] = results
+                st.session_state["accum_total_scanned"] = total
+
+            results = st.session_state.get("accum_results", [])
+            total_scanned = st.session_state.get("accum_total_scanned", 0)
+
+            if not results:
+                st.info("Belirtilen kosullari saglayan sembol bulunamadi.")
+            else:
+                st.metric("Bulunan Sinyal", len(results), delta=f"{total_scanned} sembol tarandi")
+
+                table_data = []
+                for r in sorted(results, key=lambda x: sum(1 for v in x["conditions"].values() if v), reverse=True):
+                    vals = r["values"]
+                    conds = r["conditions"]
+                    met = sum(1 for v in conds.values() if v)
+                    table_data.append({
+                        "Sembol": r["symbol"],
+                        "Kapanis": f"{r['close']:.2f}",
+                        "MFI": f"{vals['mfi']:.1f}" + (" ✓" if conds["mfi_cross"] else ""),
+                        "CMF": f"{vals['cmf']:.4f}" + (" ✓" if conds["cmf_cross"] else ""),
+                        "ADX": f"{vals['adx']:.1f}" + (" ✓" if conds["adx_range"] else ""),
+                        "RSI": f"{vals['rsi']:.1f}" + (" ✓" if conds["rsi_cross"] else ""),
+                        "Kapanis>EMA20": "✓" if conds["above_ema20"] else "",
+                        "Hacim>1.5x": "✓" if conds["volume_surge"] else "",
+                        "Rel.Hacim": f"{vals['rel_volume']:.2f}" + (" ✓" if conds["high_rel_volume"] else ""),
+                        "Kosul": f"{met}/7",
+                    })
+
+                result_df = pd.DataFrame(table_data)
+                st.dataframe(result_df, width="stretch", height=min(len(result_df) * 35 + 40, 600))
+
+                with st.expander("Kosul Aciklamalari"):
+                    st.markdown("""
+| Gosterge | Kosul | Anlam |
+|----------|-------|-------|
+| MFI (14) | 50'u yukari kesti | Para girisi yeni basliyor |
+| CMF (20) | 0'i yukari kesti | Para akisi pozitife donuyor |
+| ADX (14) | 15 – 25 arasi | Trend yeni olusum asamasinda |
+| RSI (14) | 50'i yukari kesti | Momentum yukari donuyor |
+| Kapanis | > EMA 20 | Kisa vadeli trendi yukari kirmis |
+| Hacim | > Ort. Hacim (20) x 1.5 | Hacim artisi basliyor |
+| Rel. Hacim | > 1.5 | Ortalamanin 1.5 kati hacim |
+                    """)

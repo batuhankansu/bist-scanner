@@ -72,6 +72,32 @@ def tradingview_dmi_adx(
     return plus_di, minus_di, adx
 
 
+def compute_accumulation_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    close = df["close"]
+    high = df["high"]
+    low = df["low"]
+    volume = df["volume"]
+
+    mfi = ta.volume.MFIIndicator(high=high, low=low, close=close, volume=volume, window=14)
+    df["mfi"] = mfi.money_flow_index()
+
+    cmf = ta.volume.ChaikinMoneyFlowIndicator(high=high, low=low, close=close, volume=volume, window=20)
+    df["cmf"] = cmf.chaikin_money_flow()
+
+    plus_di, minus_di, adx = tradingview_dmi_adx(high, low, close, length=14)
+    df["adx_14"] = adx
+
+    df["rsi_14"] = ta.momentum.rsi(close, window=14)
+
+    df["ema_20"] = ta.trend.ema_indicator(close, window=20)
+
+    df["vol_sma_20"] = volume.rolling(window=20).mean()
+
+    df["rel_volume"] = volume / df["vol_sma_20"]
+
+    return df
+
+
 def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     close = df["close"]
     high = df["high"]
