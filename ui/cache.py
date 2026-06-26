@@ -233,6 +233,13 @@ def compute_accumulation_for_symbol(symbol: str):
 
     df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
 
+    if not is_market_closed():
+        today = today_str()
+        if len(df) >= 2 and str(df.iloc[-1]["date"]) == today:
+            df = df.iloc[:-1]
+            if len(df) < 50:
+                return None
+
     try:
         df = compute_accumulation_indicators(df)
         result = detect_accumulation_signal(df)
