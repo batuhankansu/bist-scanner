@@ -19,7 +19,38 @@ from config import (
 )
 
 st.set_page_config(page_title="BIST-SCANNER", layout="wide")
+
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.title("BIST-SCANNER")
+    st.caption("Giris yapin")
+
+    with st.form("login_form"):
+        username = st.text_input("Kullanici Adi")
+        password = st.text_input("Sifre", type="password")
+        submitted = st.form_submit_button("Giris Yap", type="primary", width="stretch")
+
+    if submitted:
+        from users import USERS
+        if username in USERS and USERS[username] == password:
+            st.session_state.authenticated = True
+            st.session_state.username = username
+            st.rerun()
+        else:
+            st.error("Kullanici adi veya sifre hatali.")
+    st.stop()
+
 st.title("BIST-SCANNER")
+
+with st.sidebar:
+    st.caption(f"Giris yapan: {st.session_state.username}")
+    if st.button("Cikis Yap"):
+        st.session_state.authenticated = False
+        if "username" in st.session_state:
+            del st.session_state.username
+        st.rerun()
 
 init_db()
 
