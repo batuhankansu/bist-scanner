@@ -226,14 +226,33 @@ def compute_stock_chart(
     }
 
 
-def compute_accumulation_for_symbol(symbol: str):
+def compute_accumulation_for_symbol(symbol: str, use_live: bool = False, live_data: dict | None = None):
     rows = load_ohlcv(symbol, limit=100)
     if len(rows) < 50:
         return None
 
     df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
 
-    if not is_market_closed():
+    if use_live and live_data and symbol in live_data:
+        live_df = live_data[symbol]
+        live_rows = []
+        for idx, row in live_df.iterrows():
+            d = idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx)[:10]
+            try:
+                o = float(row["Open"]) if pd.notna(row["Open"]) else None
+                h = float(row["High"]) if pd.notna(row["High"]) else None
+                l = float(row["Low"]) if pd.notna(row["Low"]) else None
+                c = float(row["Close"]) if pd.notna(row["Close"]) else None
+                v = int(row["Volume"]) if pd.notna(row["Volume"]) else 0
+                if o and h and l and c and v > 0:
+                    live_rows.append((d, o, h, l, c, v))
+            except (ValueError, TypeError):
+                continue
+        if live_rows:
+            live_df_clean = pd.DataFrame(live_rows, columns=["date", "open", "high", "low", "close", "volume"])
+            df = pd.concat([df, live_df_clean], ignore_index=True)
+            df = df.drop_duplicates(subset="date", keep="last").sort_values("date").reset_index(drop=True)
+    elif not use_live and not is_market_closed():
         today = today_str()
         if len(df) >= 2 and str(df.iloc[-1]["date"]) == today:
             df = df.iloc[:-1]

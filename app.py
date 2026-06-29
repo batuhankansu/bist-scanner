@@ -10,6 +10,7 @@ from datetime import date
 from database import init_db, get_scan_time, get_latest_signal_date
 from scanner import run_scan, run_backfill, is_market_closed
 from ui.cache import load_signals_df, get_cached_symbols_list, compute_stock_chart, compute_accumulation_for_symbol
+from data_fetcher import fetch_live_data
 from ui.tables import render_signal_table, render_signal_table_selectable
 from config import (
     EMA_FAST, EMA_SLOW, NEAR_CROSS_PCT,
@@ -316,11 +317,13 @@ elif tab_labels[st.session_state.active_tab] == tab_labels[3]:
         st.info("Veri bulunamadi. Once bir tarama yapin.")
     else:
         with st.form("accum_scan_form"):
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 min_score = st.slider("Minimum Kosul Sayisi", 1, 7, 7, help="Kac kosulun ayni anda saglanacagi")
             with col2:
                 symbol_filter = st.text_input("Sembol Filtrele (opsiyonel)", key="acc_filter")
+            with col3:
+                use_live = st.checkbox("Anlik Veri ile Tara", value=False, help="Isaretlenirse kapanmamis son mum dahil edilir, isaretlenmezse sadece kapanmis mumlar kullanilir")
             submitted = st.form_submit_button("Tarama Yap", type="primary", width="stretch")
 
         if submitted or "accum_results" in st.session_state:
@@ -329,10 +332,18 @@ elif tab_labels[st.session_state.active_tab] == tab_labels[3]:
                 progress_bar = st.progress(0, text="Taranıyor...")
                 filtered_syms = [s for s in symbols if symbol_filter.upper() in s] if symbol_filter else symbols
                 total = len(filtered_syms)
+
+                live_data = None
+                if use_live:
+                    progress_bar.progress(0, text="Anlik veriler cekiliyor (yfinance)...")
+                    live_data = fetch_live_data(filtered_syms)
+                    st.caption(f"Anlik veri cekildi: {len(live_data)}/{len(filtered_syms)} sembol")
+
                 for i, sym in enumerate(filtered_syms):
                     if (i + 1) % 50 == 0 or i == 0 or i == total - 1:
-                        progress_bar.progress((i + 1) / total, text=f"{i+1}/{total} {sym}")
-                    acc = compute_accumulation_for_symbol(sym)
+                        label = f"{i+1}/{total} {sym}" + (" (canli)" if use_live else "")
+                        progress_bar.progress((i + 1) / total, text=label)
+                    acc = compute_accumulation_for_symbol(sym, use_live=use_live, live_data=live_data)
                     if acc:
                         met_count = sum(1 for v in acc["conditions"].values() if v)
                         if met_count >= min_score:

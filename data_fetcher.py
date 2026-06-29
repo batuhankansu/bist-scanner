@@ -125,6 +125,50 @@ def update_data(symbols: list[str], force_today: bool = False) -> int:
     return updated
 
 
+def fetch_live_data(symbols: list[str]) -> dict[str, pd.DataFrame]:
+    results = {}
+    batches = [symbols[i:i + YFINANCE_BATCH_SIZE] for i in range(0, len(symbols), YFINANCE_BATCH_SIZE)]
+
+    for batch_idx, batch in enumerate(batches):
+        tickers = [f"{s}.IS" for s in batch]
+        for attempt in range(3):
+            try:
+                data = yf.download(
+                    tickers,
+                    period="5d",
+                    interval="1d",
+                    group_by="ticker",
+                    progress=False,
+                    threads=True,
+                )
+                if data.empty:
+                    break
+
+                if len(batch) == 1:
+                    ticker = tickers[0]
+                    symbol = batch[0]
+                    if not data.empty:
+                        results[symbol] = data
+                else:
+                    for ticker, symbol in zip(tickers, batch):
+                        try:
+                            sub = data[ticker].dropna(how="all")
+                            if not sub.empty:
+                                results[symbol] = sub
+                        except (KeyError, TypeError):
+                            continue
+                break
+            except Exception:
+                if attempt < 2:
+                    time.sleep(2)
+                continue
+
+        if batch_idx < len(batches) - 1:
+            time.sleep(0.5)
+
+    return results
+
+
 def fetch_single(symbol: str) -> pd.DataFrame | None:
     try:
         ticker = yf.Ticker(f"{symbol}.IS")
