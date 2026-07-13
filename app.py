@@ -12,6 +12,9 @@ from scanner import run_scan, run_backfill, is_market_closed
 from ui.cache import load_signals_df, get_cached_symbols_list, compute_stock_chart, compute_accumulation_for_symbol
 from data_fetcher import fetch_live_data
 from ui.tables import render_signal_table, render_signal_table_selectable
+from tv_data import fetch_candles_from_tv
+from mfi_strategy import detect_accumulation_signal
+from indicators import compute_accumulation_indicators
 from config import (
     EMA_FAST, EMA_SLOW, NEAR_CROSS_PCT,
     MACD_FAST, MACD_SLOW, MACD_SIGNAL,
@@ -61,9 +64,9 @@ except Exception as e:
 market_closed = is_market_closed()
 
 if market_closed:
-    tab_labels = ["Bugunun Sinyalleri", "Sinyal Gecmisi", "Grafikler", "Birikim Taramasi"]
+    tab_labels = ["Bugunun Sinyalleri", "Sinyal Gecmisi", "Grafikler", "Birikim Taramasi", "Anlik Birikim (TV)"]
 else:
-    tab_labels = ["Son Kapanan Sinyaller", "Sinyal Gecmisi", "Grafikler", "Birikim Taramasi"]
+    tab_labels = ["Son Kapanan Sinyaller", "Sinyal Gecmisi", "Grafikler", "Birikim Taramasi", "Anlik Birikim (TV)"]
 
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = 0
@@ -395,4 +398,152 @@ elif tab_labels[st.session_state.active_tab] == tab_labels[3]:
 | Kapanis | > EMA 20 | Kisa vadeli trendi yukari kirmis |
 | Hacim | > Ort. Hacim (20) x 1.5 | Hacim artisi basliyor |
 | Rel. Hacim | > 1.5 | Ortalamanin 1.5 kati hacim |
+                    """)
+
+elif tab_labels[st.session_state.active_tab] == tab_labels[4]:
+    st.subheader("Anlik Birikim Taramasi (TradingView)")
+    st.caption("TradingView WebSocket uzerinden anlik veri ile tarama — yfinance 15dk gecikme olmadan")
+
+    symbols = get_cached_symbols_list()
+    if not symbols:
+        st.info("Veri bulunamadi. Once bir tarama yapin.")
+    else:
+        with st.form("tv_accum_scan_form"):
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                tv_interval_label = st.selectbox(
+                    "Mum Araligi",
+                    ["1 Gun", "4 Saat", "2 Saat", "1 Saat"],
+                    index=0,
+                    key="tv_interval",
+                    help="TradingView'dancekilecek mum araligi"
+                )
+                TV_INTERVAL_MAP = {"1 Gun": "1D", "4 Saat": "240", "2 Saat": "120", "1 Saat": "60"}
+                tv_interval = TV_INTERVAL_MAP[tv_interval_label]
+            with col2:
+                tv_min_score = st.slider("Minimum Kosul Sayisi", 1, 7, 7, key="tv_min_score", help="Kac kosulun ayni anda saglanacagi")
+            with col3:
+                tv_symbol_filter = st.text_input("Sembol Filtrele (opsiyonel)", key="tv_acc_filter")
+            with col4:
+                tv_use_db = st.checkbox("DB'den fallback kullan", value=True, help="TradingView basarisizsa veritabanindan yukle")
+            tv_submitted = st.form_submit_button("Anlik Tara (TradingView)", type="primary", width="stretch")
+
+        if tv_submitted or "tv_accum_results" in st.session_state:
+            if tv_submitted:
+                tv_results = []
+                tv_progress = st.progress(0, text="TradingView'a baglaniliyor...")
+                filtered_syms = [s for s in symbols if tv_symbol_filter.upper() in s] if tv_symbol_filter else symbols
+                total = len(filtered_syms)
+                BATCH = 50
+
+                tv_data_map = {}
+                batches = [filtered_syms[i:i+BATCH] for i in range(0, len(filtered_syms), BATCH)]
+
+                tv_bar_count = 500 if tv_interval in ("60", "120", "240") else 100
+
+                for bi, batch in enumerate(batches):
+                    pct = (bi + 1) / (len(batches) + 1)
+                    syms_str = ", ".join(batch[:3]) + ("..." if len(batch) > 3 else "")
+                    tv_progress.progress(pct, text=f"Batch {bi+1}/{len(batches)} — {syms_str} ({tv_interval_label}) cekiliyor...")
+
+                    batch_result = fetch_candles_from_tv(batch, interval=tv_interval, count=tv_bar_count)
+                    tv_data_map.update(batch_result)
+
+                tv_progress.progress(1.0, text=f"Veri cekildi: {len(tv_data_map)}/{total} sembol")
+
+                if tv_use_db:
+                    from database import load_ohlcv
+                    missing = [s for s in filtered_syms if s not in tv_data_map]
+                    if missing:
+                        st.caption(f"DB'den {len(missing)} eksik sembol yukleniyor...")
+                        for sym in missing:
+                            rows = load_ohlcv(sym, limit=100)
+                            if len(rows) >= 50:
+                                df = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
+                                tv_data_map[sym] = df
+
+                tv_scan_progress = st.progress(0, text="Indikatorler hesaplaniyor...")
+                scanned_count = 0
+                for i, sym in enumerate(filtered_syms):
+                    if (i + 1) % 50 == 0 or i == 0 or i == total - 1:
+                        tv_scan_progress.progress((i + 1) / total, text=f"{i+1}/{total} {sym} isleniyor...")
+
+                    if sym not in tv_data_map:
+                        continue
+
+                    df = tv_data_map[sym]
+                    if len(df) < 50:
+                        continue
+
+                    try:
+                        df = compute_accumulation_indicators(df)
+                        result = detect_accumulation_signal(df)
+                        scanned_count += 1
+
+                        if result:
+                            met_count = sum(1 for v in result["conditions"].values() if v)
+                            if met_count >= tv_min_score:
+                                tv_results.append({"symbol": sym, **result})
+                    except Exception:
+                        continue
+
+                tv_scan_progress.empty()
+
+                st.session_state["tv_accum_results"] = tv_results
+                st.session_state["tv_accum_total_scanned"] = scanned_count
+                st.session_state["tv_data_source"] = "tradingview"
+                st.session_state["tv_interval_used"] = tv_interval_label
+
+            tv_results = st.session_state.get("tv_accum_results", [])
+            tv_total_scanned = st.session_state.get("tv_accum_total_scanned", 0)
+            tv_source = st.session_state.get("tv_data_source", "unknown")
+            tv_interval_used = st.session_state.get("tv_interval_used", "1 Gun")
+
+            if not tv_results:
+                st.info("Belirtilen kosullari saglayan sembol bulunamadi.")
+            else:
+                source_label = "TradingView" if tv_source == "tradingview" else "yfinance"
+                st.metric("Bulunan Sinyal", len(tv_results), delta=f"{tv_total_scanned} sembol tarandi — {tv_interval_used} ({source_label})")
+
+                tv_table_data = []
+                for r in sorted(tv_results, key=lambda x: sum(1 for v in x["conditions"].values() if v), reverse=True):
+                    vals = r["values"]
+                    conds = r["conditions"]
+                    met = sum(1 for v in conds.values() if v)
+                    tv_table_data.append({
+                        "Sembol": r["symbol"],
+                        "Kapanis": f"{r['close']:.2f}",
+                        "MFI": f"{vals['mfi']:.1f}" + (" ✓" if conds["mfi_cross"] else ""),
+                        "CMF": f"{vals['cmf']:.4f}" + (" ✓" if conds["cmf_cross"] else ""),
+                        "ADX": f"{vals['adx']:.1f}" + (" ✓" if conds["adx_range"] else ""),
+                        "RSI": f"{vals['rsi']:.1f}" + (" ✓" if conds["rsi_cross"] else ""),
+                        "Kapanis>EMA20": "✓" if conds["above_ema20"] else "",
+                        "Hacim>1.5x": "✓" if conds["volume_surge"] else "",
+                        "Rel.Hacim": f"{vals['rel_volume']:.2f}" + (" ✓" if conds["high_rel_volume"] else ""),
+                        "Kosul": f"{met}/7",
+                    })
+
+                tv_result_df = pd.DataFrame(tv_table_data)
+                st.dataframe(tv_result_df, width="stretch", height=min(len(tv_result_df) * 35 + 40, 600))
+
+                with st.expander("Kosul Aciklamalari"):
+                    st.markdown("""
+| Gosterge | Kosul | Anlam |
+|----------|-------|-------|
+| MFI (14) | 50'u yukari kesti | Para girisi yeni basliyor |
+| CMF (20) | 0'i yukari kesti | Para akisi pozitife donuyor |
+| ADX (14) | 15 – 25 arasi | Trend yeni olusum asamasinda |
+| RSI (14) | 50'i yukari kesti | Momentum yukari donuyor |
+| Kapanis | > EMA 20 | Kisa vadeli trendi yukari kirmis |
+| Hacim | > Ort. Hacim (20) x 1.5 | Hacim artisi basliyor |
+| Rel. Hacim | > 1.5 | Ortalamanin 1.5 kati hacim |
+                    """)
+
+                with st.expander("Veri Kaynagi Hakkinda"):
+                    st.markdown("""
+**TradingView WebSocket** ile anlik veri cekildi:
+- yfinance 15 dakika gecikmeli veri verirken, TradingView WebSocket ile anlik veri alinir
+- Veriler TradingView'in resmi olmayan WebSocket protokolu ile cekilmektedir
+- Baglanti basarisiz olursa veritabanindan fallback yapilir
+- Gunluk mumlar (1D) kullanilmaktadir — indikatorler gunluk bazda hesaplanir
                     """)
