@@ -12,10 +12,13 @@ if __name__ == "__main__":
     from streamlit.web.cli import main as st_main
 
     app_path = os.path.join(base_dir, "app.py")
+    port = os.environ.get("PORT", "8501")
     sys.argv = [
         "streamlit", "run", app_path,
-        "--server.port=8501",
-        "--server.headless=false",
+        f"--server.port={port}",
+        "--server.address=0.0.0.0",
+        "--server.headless=true",
         "--global.developmentMode=false",
+        "--browser.gatherUsageStats=false",
     ]
     st_main()

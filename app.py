@@ -53,7 +53,10 @@ with st.sidebar:
             del st.session_state.username
         st.rerun()
 
-init_db()
+try:
+    init_db()
+except Exception as e:
+    st.error(f"Veritabani hatasi: {e}")
 
 market_closed = is_market_closed()
 
